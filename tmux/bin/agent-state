@@ -1,0 +1,26 @@
+#!/bin/sh
+# usage: agent-state waiting|done|clear   run by an agent's hooks inside its pane
+#        agent-state jump <client>          run by a tmux key binding
+
+case "$1" in
+jump)
+	pane=$(tmux list-panes -a -F '#{@agent_state} #{pane_id}' |
+		awk '$1 == "waiting" { print $2; exit } $1 == "done" && !d { d = $2 } END { if (d) print d }' | head -n 1)
+	[ -n "$pane" ] || { tmux display -c "$2" 'no agent needs you'; exit 0; }
+	tmux switch-client -c "$2" -t "$pane"
+	;;
+waiting | done | clear)
+	[ -n "$TMUX_PANE" ] || exit 0
+	# A pane you are already looking at needs no alert.
+	viewed=$(tmux display -p -t "$TMUX_PANE" '#{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}}')
+	if [ "$1" = clear ] || [ "$viewed" = 1 ]; then
+		tmux set -pu -t "$TMUX_PANE" @agent_state
+	else
+		tmux set -p -t "$TMUX_PANE" @agent_state "$1"
+	fi
+	;;
+*)
+	echo "usage: agent-state waiting|done|clear|jump <client>" >&2
+	exit 2
+	;;
+esac
